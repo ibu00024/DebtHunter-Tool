@@ -63,4 +63,10 @@ public class DirectoryIterator implements FileIterator {
 		return true;
 	}
 
+    public String getCurrentFileName() {
+        if (index - 1 < files.size()) {
+            return files.get(index - 1).getName();
+        }
+        return null;
+    }
 }

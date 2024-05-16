@@ -26,10 +26,11 @@ import com.github.javaparser.ast.CompilationUnit;
 
 import com.github.javaparser.ast.PackageDeclaration;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
-import com.github.javaparser.ast.expr.MethodCallExpr;
+import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
 
 import tool.DataHandler;
+import utils.DirectoryIterator;
 import utils.FileIterator;
 import weka.core.Attribute;
 import weka.core.DenseInstance;
@@ -39,225 +40,235 @@ import weka.core.Instances;
 
 public class JavaParsing {
 
-	private static Map<String,List<String>> parseClass(InputStream in) throws IOException{
-
-		// parse the file
+	private static Map<String, List<CommentInfo>> parseClass(InputStream in, String fileName) throws IOException {
 		CompilationUnit cu = null;
-
-		Map<String,List<String>> elements = new HashMap<>();
-
-		try{
+		Map<String, List<CommentInfo>> elements = new HashMap<>();
+	
+		try {
 			cu = JavaParser.parse(in);
-		}catch(ParseProblemException e){
+		} catch (ParseProblemException e) {
 			System.out.println("PARSING ERROR!");
 		}
-
-		if(cu == null)
-			return elements;
-
-		String package_declaration = null;
-
-		if(cu.getChildNodesByType(PackageDeclaration.class).size() == 0)
-			package_declaration = "default";
-		else
-			package_declaration = cu.getChildNodesByType(PackageDeclaration.class).get(0).getNameAsString();
-
+	
+		if (cu == null) return elements;
+	
+		String package_declaration = (cu.getChildNodesByType(PackageDeclaration.class).size() == 0)
+				? "default"
+				: cu.getChildNodesByType(PackageDeclaration.class).get(0).getNameAsString();
+	
+		MethodVisitor methodVisitor = new MethodVisitor();
+		cu.accept(methodVisitor, null);
+	
 		List<ClassOrInterfaceDeclaration> classes = cu.getChildNodesByType(ClassOrInterfaceDeclaration.class);
-		for(ClassOrInterfaceDeclaration ci : classes){ 
-
-			String class_name = getQualifiedName(cu,ci,package_declaration);
-
-			List<String> comments = ci.getAllContainedComments().stream().map(c -> c.getContent().trim().replaceAll("//|\\*","").replaceAll("\\s+", " ")).collect(Collectors.toList());
-
+		for (ClassOrInterfaceDeclaration ci : classes) {
+	
+			String class_name = getQualifiedName(cu, ci, package_declaration);
+			List<CommentInfo> comments = ci.getAllContainedComments().stream().map(c -> {
+				int beginLineNumber = c.getBegin().map(p -> p.line).orElse(-1);
+				int endLineNumber = c.getEnd().map(p -> p.line).orElse(-1);
+				String methodName = methodVisitor.getMethodNameForLine(beginLineNumber);
+				return new CommentInfo(c.getContent().trim().replaceAll("//|\\*", "").replaceAll("\\s+", " "), beginLineNumber, endLineNumber, methodName, fileName);
+			}).collect(Collectors.toList());
+	
 			elements.put(class_name, comments);
-
 		}
 		return elements;
 	}
+	
+	
+	
 
+    static String getQualifiedName(CompilationUnit cu, ClassOrInterfaceDeclaration ci, String package_declaration) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(package_declaration + ".");
+        if (!ci.isNestedType()) return sb.toString() + ci.getNameAsString();
 
-	static String getQualifiedName(CompilationUnit cu, ClassOrInterfaceDeclaration ci, String package_declaration) {
+        Optional<ClassOrInterfaceDeclaration> ancestor = ci.getAncestorOfType(ClassOrInterfaceDeclaration.class);
+        while (ancestor.isPresent()) {
+            sb.append(ancestor.get().getNameAsString() + "#");
+            ancestor = ancestor.get().getAncestorOfType(ClassOrInterfaceDeclaration.class);
+        }
 
-		StringBuilder sb = new StringBuilder();
-		sb.append(package_declaration + ".");
-		if(!ci.isNestedType())
-			return sb.toString()+ci.getNameAsString();
+        sb.append(ci.getNameAsString());
+        return sb.toString();
+    }
 
-		Optional<ClassOrInterfaceDeclaration> ancestor = ci.getAncestorOfType(ClassOrInterfaceDeclaration.class);
-		while(ancestor.isPresent()){
-			sb.append(ancestor.get().getNameAsString() + "#");
-			ancestor = ancestor.get().getAncestorOfType(ClassOrInterfaceDeclaration.class);
-		}
-
-		sb.append(ci.getNameAsString());
-
-		return sb.toString();
-	}
-
-	class MethodCallVisitor extends VoidVisitorAdapter<Void> {
-
-		StringBuilder sb;
-
-		MethodCallVisitor(StringBuilder s){
-			sb = s;
-		}
-
+	static class MethodVisitor extends VoidVisitorAdapter<Void> {
+		private List<MethodRange> methodRanges = new ArrayList<>();
+	
 		@Override
-		public void visit(MethodCallExpr n, Void arg) {
-			// Found a method call
-			if(n.getScope().isPresent())
-				//	    		sb.append(n.getScope().get() + "." + n.getName()+" ");
-				sb.append(n.getName() + " ");
-			// Don't forget to call super, it may find more method calls inside the arguments of this method call, for example.
-			super.visit(n, arg);
+		public void visit(MethodDeclaration md, Void arg) {
+			super.visit(md, arg);
+			int beginLine = md.getBegin().map(p -> p.line).orElse(-1);
+			int endLine = md.getEnd().map(p -> p.line).orElse(-1);
+			String methodName = md.getNameAsString();
+			methodRanges.add(new MethodRange(beginLine, endLine, methodName));
+		}
+	
+		public String getMethodNameForLine(int lineNumber) {
+			for (MethodRange range : methodRanges) {
+				if (lineNumber >= range.getBeginLine() && lineNumber <= range.getEndLine()) {
+					return range.getMethodName();
+				}
+			}
+			return "";
+		}
+	
+		static class MethodRange {
+			private int beginLine;
+			private int endLine;
+			private String methodName;
+	
+			public MethodRange(int beginLine, int endLine, String methodName) {
+				this.beginLine = beginLine;
+				this.endLine = endLine;
+				this.methodName = methodName;
+			}
+	
+			public int getBeginLine() {
+				return beginLine;
+			}
+	
+			public int getEndLine() {
+				return endLine;
+			}
+	
+			public String getMethodName() {
+				return methodName;
+			}
 		}
 	}
 	
-	public static Instances processDirectory(String projectPath, String outputPath) throws Exception{
-		
-		Boolean firstTime = true;
-		
-		ArrayList<Attribute> attributes = new ArrayList<>();
-		attributes.add(new Attribute("projectname", (ArrayList<String>) null));
-		attributes.add(new Attribute("package", (ArrayList<String>) null));
-		attributes.add(new Attribute("top_package", (ArrayList<String>) null));
-		attributes.add(new Attribute("comment", (ArrayList<String>) null));
-        Instances data = new Instances("comments", attributes, 1);
-		
-		File f = new File(projectPath);
-		for(File ff : f.listFiles()){
-			String full_path = null;
-			if(ff.isDirectory())
-				full_path = ff.getAbsolutePath();
-			else
-				if(ff.isFile() && (ff.getName().endsWith(".jar") || ff.getName().endsWith(".zip") || ff.getName().endsWith("tag.gz")))
-					full_path = ff.getAbsolutePath().substring(0,ff.getAbsolutePath().lastIndexOf("."));
-			
-			if(full_path == null)
-				continue;
-			
-			data = saveComments(full_path, projectPath, outputPath, firstTime, data);
-			firstTime = false;
-			
-		}
-		
-		return data;
-		
-	}
-	
-	private static Instances saveComments(String full_path, String path, String outputPath, Boolean firstTime, Instances data) throws Exception{
-		
-		System.out.println("Getting comments... " + full_path + " " + new Date());
-		
-		FileIterator it = FileIterator.getIterator(full_path);
 
-		Map<String,List<String>> comments = new HashMap<>();
+    public static Instances processDirectory(String projectPath, String outputPath) throws Exception {
+        Boolean firstTime = true;
+
+        ArrayList<Attribute> attributes = new ArrayList<>();
+        attributes.add(new Attribute("projectname", (ArrayList<String>) null));
+        attributes.add(new Attribute("package", (ArrayList<String>) null));
+        attributes.add(new Attribute("top_package", (ArrayList<String>) null));
+        attributes.add(new Attribute("comment", (ArrayList<String>) null));
+        Instances data = new Instances("comments", attributes, 1);
+
+        File f = new File(projectPath);
+        for (File ff : f.listFiles()) {
+            String full_path = null;
+            if (ff.isDirectory())
+                full_path = ff.getAbsolutePath();
+            else if (ff.isFile() && (ff.getName().endsWith(".jar") || ff.getName().endsWith(".zip") || ff.getName().endsWith("tag.gz")))
+                full_path = ff.getAbsolutePath().substring(0, ff.getAbsolutePath().lastIndexOf("."));
+
+            if (full_path == null) continue;
+
+            data = saveComments(full_path, projectPath, outputPath, firstTime, data);
+            firstTime = false;
+        }
+
+        return data;
+    }
+
+	private static Instances saveComments(String full_path, String path, String outputPath, Boolean firstTime, Instances data) throws Exception {
+		System.out.println("Getting comments... " + full_path + " " + new Date());
+	
+		FileIterator it = FileIterator.getIterator(full_path);
+	
+		Map<String, List<CommentInfo>> comments = new HashMap<>();
 		Set<String> packages = new HashSet<>();
 		InputStream clas = it.nextStream();
-		while(clas != null){
-			
-			Map<String,List<String>> aux = parseClass(clas);
-			if(aux.size() > 0){
+		while (clas != null) {
+			String fileName = ((DirectoryIterator) it).getCurrentFileName();
+	
+			Map<String, List<CommentInfo>> aux = parseClass(clas, fileName);
+			if (aux.size() > 0) {
 				comments.putAll(aux);
 				String cc = findClass(aux.keySet());
-				if(cc != null)
-					packages.add(cc.substring(0,cc.lastIndexOf(".")));
+				if (cc != null) packages.add(cc.substring(0, cc.lastIndexOf(".")));
 			}
-				
+	
 			clas = it.nextStream();
 		}
-		
-		
+	
 		if (firstTime) {
-			
-			//save file
 			BufferedWriter writer = Files.newBufferedWriter(Paths.get(outputPath + "/comments.csv"));
 	
-			Set<String> top_levels = getTopLevelPackages(packages);	
-			
-			//projectname		package		top_package		comment
-	        CSVPrinter csvPrinter = new CSVPrinter(writer, CSVFormat.DEFAULT.withHeader("projectname", "package", "top_package", "comment"));
-	        String projectname = new File(full_path).getName();
-	        for(String cla : comments.keySet()){
-	        	
-	        	String pack = cla.substring(0, cla.lastIndexOf("."));
-	        	String top = getTop(top_levels, pack);
-	        	
-	        	List<String> comms = comments.get(cla);
-	        	for(String c : comms){
-
-	        		csvPrinter.printRecord(projectname, pack, top, c);
-	        		
-	        		// comments cleaning
-	        		c = DataHandler.cleanComment(c);
-	        		
-	        		// remove all empty instances
-	        		if (c.contentEquals(" ")) {
-
-	        			continue;
-
-	        		}
-	        		
-	        		Instance inst  = new DenseInstance(4);
-	        		inst.setDataset(data);
-	        		inst.setValue(0 , projectname);
-	        		inst.setValue(1 , pack);
-	        		inst.setValue(2 , top);
-	        		inst.setValue(3 , c);
-	        		data.add(inst);
-	        	}
-	        }
-	        
-	        csvPrinter.flush();  
-	        csvPrinter.close();
-	        
-	        return data;
-	        
+			Set<String> top_levels = getTopLevelPackages(packages);
+	
+			CSVPrinter csvPrinter = new CSVPrinter(writer, CSVFormat.DEFAULT.withHeader("projectname", "package", "top_package", "comment", "fileName", "methodName", "beginLine", "endLine")
+					.withQuoteMode(org.apache.commons.csv.QuoteMode.ALL));
+			String projectname = new File(full_path).getName();
+			for (String cla : comments.keySet()) {
+	
+				String pack = cla.substring(0, cla.lastIndexOf("."));
+				String top = getTop(top_levels, pack);
+	
+				List<CommentInfo> comms = comments.get(cla);
+				for (CommentInfo ci : comms) {
+					csvPrinter.printRecord(projectname, pack, top, ci.getComment(), ci.getFileName(), ci.getMethodName(), ci.getBeginLineNumber(), ci.getEndLineNumber());
+	
+					String c = DataHandler.cleanComment(ci.getComment());
+	
+					if (c.contentEquals(" ")) continue;
+	
+					Instance inst = new DenseInstance(4);
+					inst.setDataset(data);
+					inst.setValue(0, projectname);
+					inst.setValue(1, pack);
+					inst.setValue(2, top);
+					inst.setValue(3, c);
+					data.add(inst);
+				}
+			}
+	
+			csvPrinter.flush();
+			csvPrinter.close();
+	
+			return data;
+	
 		} else {
 			FileWriter csv = new FileWriter(outputPath + "/comments.csv", true);
 			BufferedWriter writer = new BufferedWriter(csv);
-			
-			Set<String> top_levels = getTopLevelPackages(packages);	
-			
+	
+			Set<String> top_levels = getTopLevelPackages(packages);
+	
+			CSVPrinter csvPrinter = new CSVPrinter(writer, CSVFormat.DEFAULT.withQuoteMode(org.apache.commons.csv.QuoteMode.ALL));
+	
 			String projectname = new File(full_path).getName();
-	        for(String cla : comments.keySet()){
-	        	
-	        	String pack = cla.substring(0, cla.lastIndexOf("."));
-	        	String top = getTop(top_levels, pack);
-	        	
-	        	List<String> comms = comments.get(cla);	        	
-	        	for(String c : comms){
-	        		String line = projectname + ", " + pack + ", " + top + ", " + c;
-	        		writer.write(line);
-	        		writer.newLine();
-	        		
-	        		// comments cleaning
-	        		c = DataHandler.cleanComment(c);
-	        		
-	        		// remove all empty instances
-	        		if (c.contentEquals(" ")) {
-
-	        			continue;
-
-	        		}
-	        		
-	        		Instance inst  = new DenseInstance(4);
-	        		inst.setDataset(data);
-	        		inst.setValue(0 , projectname);
-	        		inst.setValue(1 , pack);
-	        		inst.setValue(2 , top);
-	        		inst.setValue(3 , c);
-	        		data.add(inst);
-
-	        	}
-	        }
-			
+			for (String cla : comments.keySet()) {
+	
+				String pack = cla.substring(0, cla.lastIndexOf("."));
+				String top = getTop(top_levels, pack);
+	
+				List<CommentInfo> comms = comments.get(cla);
+				for (CommentInfo ci : comms) {
+					csvPrinter.printRecord(projectname, pack, top, ci.getComment(), ci.getFileName(), ci.getMethodName(), ci.getBeginLineNumber(), ci.getEndLineNumber());
+	
+					String c = DataHandler.cleanComment(ci.getComment());
+	
+					if (c.contentEquals(" ")) continue;
+	
+					Instance inst = new DenseInstance(4);
+					inst.setDataset(data);
+					inst.setValue(0, projectname);
+					inst.setValue(1, pack);
+					inst.setValue(2, top);
+					inst.setValue(3, c);
+					data.add(inst);
+				}
+			}
+	
+			csvPrinter.flush();
+			csvPrinter.close();
+	
 			writer.close();
 			return data;
-			
 		}
-		
 	}
+	
+	
+	
+
+	
+	
 
 	private static String getTop(Set<String> tops, String p) {
 		String top = "";
@@ -383,8 +394,10 @@ public class JavaParsing {
 		
 		String path = args[0];
 		String outputPath = args[1];
+		// String path = "/Users/ibuki/Documents/OSS/selogger-0.5.1";
+		// String outputPath = "/Users/ibuki/Documents/test/output";
 		Instances data = processDirectory(path, outputPath);
-		System.out.println(data);
+		// System.out.println(data);
 
 	}
 
