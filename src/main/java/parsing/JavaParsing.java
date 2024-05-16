@@ -74,9 +74,6 @@ public class JavaParsing {
 		}
 		return elements;
 	}
-	
-	
-	
 
     static String getQualifiedName(CompilationUnit cu, ClassOrInterfaceDeclaration ci, String package_declaration) {
         StringBuilder sb = new StringBuilder();
@@ -264,12 +261,6 @@ public class JavaParsing {
 		}
 	}
 	
-	
-	
-
-	
-	
-
 	private static String getTop(Set<String> tops, String p) {
 		String top = "";
 		for(String t : tops)
@@ -397,7 +388,7 @@ public class JavaParsing {
 		// String path = "/Users/ibuki/Documents/OSS/selogger-0.5.1";
 		// String outputPath = "/Users/ibuki/Documents/test/output";
 		Instances data = processDirectory(path, outputPath);
-		// System.out.println(data);
+		System.out.println(data);
 
 	}
 
