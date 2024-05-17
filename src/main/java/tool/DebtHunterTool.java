@@ -99,6 +99,7 @@ public class DebtHunterTool implements Runnable {
 			while (onlyComments.numAttributes() > 1) {
 				try {
 					onlyComments = DataHandler.removeAttribute(onlyComments, "first");
+					onlyComments = DataHandler.removeAttribute(onlyComments, "1,2,4,5,6,7");
 				} catch (Exception e) {
 					e.printStackTrace();
 				}
