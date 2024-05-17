@@ -5,8 +5,8 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 
-import org.apache.commons.csv.CSVFormat;
-import org.apache.commons.csv.CSVPrinter;
+// import org.apache.commons.csv.CSVFormat;
+// import org.apache.commons.csv.CSVPrinter;
 
 import weka.core.Instances;
 import weka.core.converters.ArffSaver;
@@ -65,7 +65,7 @@ public class DataHandler {
     //             if (value == null || value.isEmpty() || value.equals("''")) {
     //                 csvPrinter.print("");
     //             } else {
-    //                 // TODO: どこかで''で囲む処理があるので，それを削除して出力するようにする．根本的な解決策ではないので，要修正
+    //                 // どこかに''で囲む処理があるので，それを削除して出力するようにする．根本的な解決策ではないので，要修正
     //                 if (value.startsWith("'") && value.endsWith("'")) {
     //                     value = value.substring(1, value.length() - 1);
     //                 }
