@@ -19,6 +19,7 @@ import java.util.stream.Collectors;
 
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVPrinter;
+import org.apache.commons.csv.QuoteMode;
 
 import com.github.javaparser.JavaParser;
 import com.github.javaparser.ParseProblemException;
@@ -137,125 +138,140 @@ public class JavaParsing {
 	}
 	
 
-    public static Instances processDirectory(String projectPath, String outputPath) throws Exception {
-        Boolean firstTime = true;
-
-        ArrayList<Attribute> attributes = new ArrayList<>();
-        attributes.add(new Attribute("projectname", (ArrayList<String>) null));
-        attributes.add(new Attribute("package", (ArrayList<String>) null));
-        attributes.add(new Attribute("top_package", (ArrayList<String>) null));
-        attributes.add(new Attribute("comment", (ArrayList<String>) null));
-        Instances data = new Instances("comments", attributes, 1);
-
-        File f = new File(projectPath);
-        for (File ff : f.listFiles()) {
-            String full_path = null;
-            if (ff.isDirectory())
-                full_path = ff.getAbsolutePath();
-            else if (ff.isFile() && (ff.getName().endsWith(".jar") || ff.getName().endsWith(".zip") || ff.getName().endsWith("tag.gz")))
-                full_path = ff.getAbsolutePath().substring(0, ff.getAbsolutePath().lastIndexOf("."));
-
-            if (full_path == null) continue;
-
-            data = saveComments(full_path, projectPath, outputPath, firstTime, data);
-            firstTime = false;
-        }
-
-        return data;
-    }
-
+	public static Instances processDirectory(String projectPath, String outputPath) throws Exception {
+		Boolean firstTime = true;
+	
+		ArrayList<Attribute> attributes = new ArrayList<>();
+		attributes.add(new Attribute("projectname", (ArrayList<String>) null));
+		attributes.add(new Attribute("package", (ArrayList<String>) null));
+		attributes.add(new Attribute("top_package", (ArrayList<String>) null));
+		attributes.add(new Attribute("comment", (ArrayList<String>) null));
+		attributes.add(new Attribute("fileName", (ArrayList<String>) null));
+		attributes.add(new Attribute("methodName", (ArrayList<String>) null));
+		attributes.add(new Attribute("beginLine", (ArrayList<String>) null));
+		attributes.add(new Attribute("endLine", (ArrayList<String>) null));
+		Instances data = new Instances("comments", attributes, 1);
+	
+		File f = new File(projectPath);
+		for (File ff : f.listFiles()) {
+			String full_path = null;
+			if (ff.isDirectory())
+				full_path = ff.getAbsolutePath();
+			else if (ff.isFile() && (ff.getName().endsWith(".jar") || ff.getName().endsWith(".zip") || ff.getName().endsWith("tag.gz")))
+				full_path = ff.getAbsolutePath().substring(0, ff.getAbsolutePath().lastIndexOf("."));
+	
+			if (full_path == null) continue;
+	
+			data = saveComments(full_path, projectPath, outputPath, firstTime, data);
+			firstTime = false;
+		}
+	
+		return data;
+	}
+	
 	private static Instances saveComments(String full_path, String path, String outputPath, Boolean firstTime, Instances data) throws Exception {
 		System.out.println("Getting comments... " + full_path + " " + new Date());
-	
+
 		FileIterator it = FileIterator.getIterator(full_path);
-	
+
 		Map<String, List<CommentInfo>> comments = new HashMap<>();
 		Set<String> packages = new HashSet<>();
 		InputStream clas = it.nextStream();
 		while (clas != null) {
 			String fileName = ((DirectoryIterator) it).getCurrentFileName();
-	
+
 			Map<String, List<CommentInfo>> aux = parseClass(clas, fileName);
 			if (aux.size() > 0) {
 				comments.putAll(aux);
 				String cc = findClass(aux.keySet());
 				if (cc != null) packages.add(cc.substring(0, cc.lastIndexOf(".")));
 			}
-	
+
 			clas = it.nextStream();
 		}
-	
+
 		if (firstTime) {
 			BufferedWriter writer = Files.newBufferedWriter(Paths.get(outputPath + "/comments.csv"));
-	
+
 			Set<String> top_levels = getTopLevelPackages(packages);
-	
+
 			CSVPrinter csvPrinter = new CSVPrinter(writer, CSVFormat.DEFAULT.withHeader("projectname", "package", "top_package", "comment", "fileName", "methodName", "beginLine", "endLine")
-					.withQuoteMode(org.apache.commons.csv.QuoteMode.ALL));
+					.withQuoteMode(QuoteMode.ALL)
+					.withEscape('\\')
+					.withRecordSeparator(System.lineSeparator()));
 			String projectname = new File(full_path).getName();
 			for (String cla : comments.keySet()) {
-	
+
 				String pack = cla.substring(0, cla.lastIndexOf("."));
 				String top = getTop(top_levels, pack);
-	
+
 				List<CommentInfo> comms = comments.get(cla);
 				for (CommentInfo ci : comms) {
 					csvPrinter.printRecord(projectname, pack, top, ci.getComment(), ci.getFileName(), ci.getMethodName(), ci.getBeginLineNumber(), ci.getEndLineNumber());
-	
 					String c = DataHandler.cleanComment(ci.getComment());
-	
+
 					if (c.contentEquals(" ")) continue;
-	
-					Instance inst = new DenseInstance(4);
+
+					Instance inst = new DenseInstance(data.numAttributes());
 					inst.setDataset(data);
 					inst.setValue(0, projectname);
 					inst.setValue(1, pack);
 					inst.setValue(2, top);
 					inst.setValue(3, c);
+					inst.setValue(4, ci.getFileName());
+					inst.setValue(5, ci.getMethodName());
+					inst.setValue(6, Integer.toString(ci.getBeginLineNumber())); // Convert int to String
+					inst.setValue(7, Integer.toString(ci.getEndLineNumber()));
 					data.add(inst);
 				}
 			}
-	
+
 			csvPrinter.flush();
 			csvPrinter.close();
-	
+
 			return data;
-	
+
 		} else {
 			FileWriter csv = new FileWriter(outputPath + "/comments.csv", true);
 			BufferedWriter writer = new BufferedWriter(csv);
-	
+
 			Set<String> top_levels = getTopLevelPackages(packages);
-	
-			CSVPrinter csvPrinter = new CSVPrinter(writer, CSVFormat.DEFAULT.withQuoteMode(org.apache.commons.csv.QuoteMode.ALL));
-	
+
+			CSVPrinter csvPrinter = new CSVPrinter(writer, CSVFormat.DEFAULT.withQuoteMode(QuoteMode.ALL)
+					.withEscape('\\')
+					.withRecordSeparator(System.lineSeparator()));
+
 			String projectname = new File(full_path).getName();
 			for (String cla : comments.keySet()) {
-	
+
 				String pack = cla.substring(0, cla.lastIndexOf("."));
 				String top = getTop(top_levels, pack);
-	
+
 				List<CommentInfo> comms = comments.get(cla);
 				for (CommentInfo ci : comms) {
 					csvPrinter.printRecord(projectname, pack, top, ci.getComment(), ci.getFileName(), ci.getMethodName(), ci.getBeginLineNumber(), ci.getEndLineNumber());
-	
+
 					String c = DataHandler.cleanComment(ci.getComment());
-	
+
 					if (c.contentEquals(" ")) continue;
-	
-					Instance inst = new DenseInstance(4);
+
+					Instance inst = new DenseInstance(data.numAttributes());
 					inst.setDataset(data);
 					inst.setValue(0, projectname);
 					inst.setValue(1, pack);
 					inst.setValue(2, top);
 					inst.setValue(3, c);
+					inst.setValue(4, ci.getFileName());
+					inst.setValue(5, ci.getMethodName());
+					inst.setValue(6, Integer.toString(ci.getBeginLineNumber())); // Convert int to String
+					inst.setValue(7, Integer.toString(ci.getEndLineNumber()));
 					data.add(inst);
 				}
 			}
-	
+
 			csvPrinter.flush();
 			csvPrinter.close();
-	
+
 			writer.close();
 			return data;
 		}

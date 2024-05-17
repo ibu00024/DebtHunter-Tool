@@ -1,15 +1,22 @@
 package tool;
 
+import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
+
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVPrinter;
 
 import weka.core.Instances;
 import weka.core.converters.ArffSaver;
-import weka.core.converters.CSVSaver;
 import weka.filters.Filter;
 import weka.filters.unsupervised.attribute.Add;
 import weka.filters.unsupervised.attribute.Remove;
 import weka.filters.unsupervised.instance.RemoveWithValues;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 public class DataHandler {
 	
@@ -28,23 +35,86 @@ public class DataHandler {
 		.replaceAll("\\s+", " ");
 		
 		return comment;
-	}
+    }
 	
-	//required full path
-	public static void saveData(Instances data, String dataName, String path) throws IOException {
+    // エスケープがうまくいかないので，jsonで出力する
+    // public static void saveData(Instances data, String dataName, String path) throws IOException {
+    //     // Save as ARFF
+    //     ArffSaver saver = new ArffSaver();
+    //     saver.setInstances(data);
+    //     saver.setFile(new File(path + "/" + dataName + ".arff"));
+    //     saver.writeBatch();
 
-		ArffSaver saver = new ArffSaver();
-		saver.setInstances(data);
-		saver.setFile(new File(path + "/" + dataName + ".arff"));
-		saver.writeBatch();
+    //     // Save as CSV
+    //     BufferedWriter writer = new BufferedWriter(new FileWriter(path + "/" + dataName + ".csv"));
+    //     CSVPrinter csvPrinter = new CSVPrinter(writer, CSVFormat.DEFAULT
+    //             .withQuoteMode(org.apache.commons.csv.QuoteMode.ALL)
+    //             .withEscape('\\')
+    //             .withRecordSeparator(System.lineSeparator()));
 
-		CSVSaver saverCSV = new CSVSaver();
-		saverCSV.setInstances(data);
-		saverCSV.setFile(new File(path + "/" + dataName + ".csv"));
-		saverCSV.writeBatch();
+    //     // Write header
+    //     for (int i = 0; i < data.numAttributes(); i++) {
+    //         csvPrinter.print(data.attribute(i).name());
+    //     }
+    //     csvPrinter.println();
 
+    //     // Write data
+    //     for (int i = 0; i < data.numInstances(); i++) {
+    //         for (int j = 0; j < data.numAttributes(); j++) {
+    //             String value = data.instance(i).toString(j);
+    //             if (value == null || value.isEmpty() || value.equals("''")) {
+    //                 csvPrinter.print("");
+    //             } else {
+    //                 // TODO: どこかで''で囲む処理があるので，それを削除して出力するようにする．根本的な解決策ではないので，要修正
+    //                 if (value.startsWith("'") && value.endsWith("'")) {
+    //                     value = value.substring(1, value.length() - 1);
+    //                 }
+	// 				csvPrinter.print(value.replace("\n", "\\n").replace("\r", "\\r"));
+    //             }
+    //         }
+    //         csvPrinter.println();
+    //     }
 
-	}
+    //     csvPrinter.flush();
+    //     csvPrinter.close();
+    //     writer.close();
+    // }
+
+    // シングルクォートで囲まれている値を削除するメソッド
+    public static String removeSingleQuotes(String value) {
+        if (value != null && value.length() > 1 && value.startsWith("'") && value.endsWith("'")) {
+            return value.substring(1, value.length() - 1);
+        }
+        return value;
+    }
+
+    // Required full path
+    public static void saveData(Instances data, String dataName, String path) throws IOException {
+        // Save as ARFF
+        ArffSaver saver = new ArffSaver();
+        saver.setInstances(data);
+        saver.setFile(new File(path + "/" + dataName + ".arff"));
+        saver.writeBatch();
+
+        // Save as JSON
+        ObjectMapper mapper = new ObjectMapper();
+        ArrayNode rootNode = mapper.createArrayNode();
+
+        for (int i = 0; i < data.numInstances(); i++) {
+            ObjectNode instanceNode = mapper.createObjectNode();
+            for (int j = 0; j < data.numAttributes(); j++) {
+                String attributeName = data.attribute(j).name();
+                String value = data.instance(i).toString(j);
+                value = removeSingleQuotes(value);
+                instanceNode.put(attributeName, value);
+            }
+            rootNode.add(instanceNode);
+        }
+
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(path + "/" + dataName + ".json"))) {
+            writer.write(mapper.writerWithDefaultPrettyPrinter().writeValueAsString(rootNode));
+        }
+    }
 	
 	public static Instances binarization(Instances data) throws Exception {
 		
@@ -115,5 +185,6 @@ public class DataHandler {
 		return newPath;
 		
 	}
+
 	
 }
