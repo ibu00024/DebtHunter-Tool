@@ -192,8 +192,6 @@ public class DebtHunterTool implements Runnable {
 	
 	public static void main(String[] args) throws Exception {
 		
-		// String[] args2 = {"-u", "first", "-p", "/Users/ibuki/Documents/OSS/selogger-0.5.1", "-o", "/Users/ibuki/Documents/test/output1"};
-		// int exitCode = new CommandLine(new DebtHunterTool()).execute(args2); 
 		int exitCode = new CommandLine(new DebtHunterTool()).execute(args);
         System.exit(exitCode);
 			

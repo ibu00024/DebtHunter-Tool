@@ -401,8 +401,6 @@ public class JavaParsing {
 		
 		String path = args[0];
 		String outputPath = args[1];
-		// String path = "/Users/ibuki/Documents/OSS/selogger-0.5.1";
-		// String outputPath = "/Users/ibuki/Documents/test/output";
 		Instances data = processDirectory(path, outputPath);
 		System.out.println(data);
 
