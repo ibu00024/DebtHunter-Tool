@@ -13,7 +13,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -23,8 +22,9 @@ import org.apache.commons.csv.QuoteMode;
 
 import com.github.javaparser.JavaParser;
 import com.github.javaparser.ParseProblemException;
+import com.github.javaparser.ParseResult;
+import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.ast.CompilationUnit;
-
 import com.github.javaparser.ast.PackageDeclaration;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
@@ -41,29 +41,37 @@ import weka.core.Instances;
 
 public class JavaParsing {
 
-	private static Map<String, List<CommentInfo>> parseClass(InputStream in, String fileName) throws IOException {
+	private static Map<String, List<CommentInfo>> parseClass(InputStream filePath, String fileName) throws IOException {
 		CompilationUnit cu = null;
 		Map<String, List<CommentInfo>> elements = new HashMap<>();
-	
+		
 		try {
-			cu = JavaParser.parse(in);
+			ParserConfiguration configuration = new ParserConfiguration();
+			configuration.setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_17);
+			configuration.setDoNotAssignCommentsPrecedingEmptyLines(false);
+			JavaParser javaParser = new JavaParser(configuration);
+			ParseResult<CompilationUnit> result = javaParser.parse(filePath);
+	
+			if (result.isSuccessful() && result.getResult().isPresent()) {
+				cu = result.getResult().get();
+			}
+	
 		} catch (ParseProblemException e) {
 			System.out.println("PARSING ERROR!");
 		}
 	
 		if (cu == null) return elements;
 	
-		String package_declaration = (cu.getChildNodesByType(PackageDeclaration.class).size() == 0)
-				? "default"
-				: cu.getChildNodesByType(PackageDeclaration.class).get(0).getNameAsString();
+		String packageName = cu.getPackageDeclaration()
+			.map(PackageDeclaration::getNameAsString)
+			.orElse("default");
 	
 		MethodVisitor methodVisitor = new MethodVisitor();
 		cu.accept(methodVisitor, null);
 	
-		List<ClassOrInterfaceDeclaration> classes = cu.getChildNodesByType(ClassOrInterfaceDeclaration.class);
+		List<ClassOrInterfaceDeclaration> classes = cu.findAll(ClassOrInterfaceDeclaration.class);
 		for (ClassOrInterfaceDeclaration ci : classes) {
-	
-			String class_name = getQualifiedName(cu, ci, package_declaration);
+			String className = packageName + "." + ci.getName().asString();
 			List<CommentInfo> comments = ci.getAllContainedComments().stream().map(c -> {
 				int beginLineNumber = c.getBegin().map(p -> p.line).orElse(-1);
 				int endLineNumber = c.getEnd().map(p -> p.line).orElse(-1);
@@ -71,25 +79,11 @@ public class JavaParsing {
 				return new CommentInfo(c.getContent().trim().replaceAll("//|\\*", "").replaceAll("\\s+", " "), beginLineNumber, endLineNumber, methodName, fileName);
 			}).collect(Collectors.toList());
 	
-			elements.put(class_name, comments);
+			elements.put(className, comments);
 		}
 		return elements;
 	}
-
-    static String getQualifiedName(CompilationUnit cu, ClassOrInterfaceDeclaration ci, String package_declaration) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(package_declaration + ".");
-        if (!ci.isNestedType()) return sb.toString() + ci.getNameAsString();
-
-        Optional<ClassOrInterfaceDeclaration> ancestor = ci.getAncestorOfType(ClassOrInterfaceDeclaration.class);
-        while (ancestor.isPresent()) {
-            sb.append(ancestor.get().getNameAsString() + "#");
-            ancestor = ancestor.get().getAncestorOfType(ClassOrInterfaceDeclaration.class);
-        }
-
-        sb.append(ci.getNameAsString());
-        return sb.toString();
-    }
+	
 
 	static class MethodVisitor extends VoidVisitorAdapter<Void> {
 		private List<MethodRange> methodRanges = new ArrayList<>();
@@ -103,6 +97,7 @@ public class JavaParsing {
 			methodRanges.add(new MethodRange(beginLine, endLine, methodName));
 		}
 	
+		// TODO: コメントが所属するメソッドのアルゴリズムは変更する
 		public String getMethodNameForLine(int lineNumber) {
 			for (MethodRange range : methodRanges) {
 				if (lineNumber >= range.getBeginLine() && lineNumber <= range.getEndLine()) {
@@ -138,20 +133,20 @@ public class JavaParsing {
 	}
 	
 
-	public static Instances processDirectory(String projectPath, String outputPath) throws Exception {
-		Boolean firstTime = true;
-	
-		ArrayList<Attribute> attributes = new ArrayList<>();
-		attributes.add(new Attribute("projectname", (ArrayList<String>) null));
-		attributes.add(new Attribute("package", (ArrayList<String>) null));
-		attributes.add(new Attribute("top_package", (ArrayList<String>) null));
-		attributes.add(new Attribute("comment", (ArrayList<String>) null));
-		attributes.add(new Attribute("fileName", (ArrayList<String>) null));
-		attributes.add(new Attribute("methodName", (ArrayList<String>) null));
-		attributes.add(new Attribute("beginLine", (ArrayList<String>) null));
-		attributes.add(new Attribute("endLine", (ArrayList<String>) null));
-		Instances data = new Instances("comments", attributes, 1);
-	
+    public static Instances processDirectory(String projectPath, String outputPath) throws Exception {
+        Boolean firstTime = true;
+
+        ArrayList<Attribute> attributes = new ArrayList<>();
+        attributes.add(new Attribute("projectname", (ArrayList<String>) null));
+        attributes.add(new Attribute("package", (ArrayList<String>) null));
+        attributes.add(new Attribute("top_package", (ArrayList<String>) null));
+        attributes.add(new Attribute("comment", (ArrayList<String>) null));
+        attributes.add(new Attribute("fileName", (ArrayList<String>) null));
+        attributes.add(new Attribute("methodName", (ArrayList<String>) null));
+        attributes.add(new Attribute("beginLine", (ArrayList<String>) null));
+        attributes.add(new Attribute("endLine", (ArrayList<String>) null));
+        Instances data = new Instances("comments", attributes, 1);
+
 		File f = new File(projectPath);
 		for (File ff : f.listFiles()) {
 			String full_path = null;
@@ -159,59 +154,58 @@ public class JavaParsing {
 				full_path = ff.getAbsolutePath();
 			else if (ff.isFile() && (ff.getName().endsWith(".jar") || ff.getName().endsWith(".zip") || ff.getName().endsWith("tag.gz")))
 				full_path = ff.getAbsolutePath().substring(0, ff.getAbsolutePath().lastIndexOf("."));
-	
+
 			if (full_path == null) continue;
-	
+
 			data = saveComments(full_path, projectPath, outputPath, firstTime, data);
-			firstTime = false;
+            firstTime = false;
 		}
-	
-		return data;
-	}
+
+        return data;
+    }
 	
 	private static Instances saveComments(String full_path, String path, String outputPath, Boolean firstTime, Instances data) throws Exception {
 		System.out.println("Getting comments... " + full_path + " " + new Date());
-
+	
 		FileIterator it = FileIterator.getIterator(full_path);
-
+	
 		Map<String, List<CommentInfo>> comments = new HashMap<>();
 		Set<String> packages = new HashSet<>();
 		InputStream clas = it.nextStream();
 		while (clas != null) {
 			String fileName = ((DirectoryIterator) it).getCurrentFileName();
-
+	
 			Map<String, List<CommentInfo>> aux = parseClass(clas, fileName);
 			if (aux.size() > 0) {
 				comments.putAll(aux);
 				String cc = findClass(aux.keySet());
-				if (cc != null) packages.add(cc.substring(0, cc.lastIndexOf(".")));
+				if (cc != null && cc.contains(".")) packages.add(cc.substring(0, cc.lastIndexOf(".")));
 			}
-
+	
 			clas = it.nextStream();
 		}
-
+	
 		if (firstTime) {
 			BufferedWriter writer = Files.newBufferedWriter(Paths.get(outputPath + "/comments.csv"));
-
+	
 			Set<String> top_levels = getTopLevelPackages(packages);
-
+	
 			CSVPrinter csvPrinter = new CSVPrinter(writer, CSVFormat.DEFAULT.withHeader("projectname", "package", "top_package", "comment", "fileName", "methodName", "beginLine", "endLine")
 					.withQuoteMode(QuoteMode.ALL)
 					.withEscape('\\')
 					.withRecordSeparator(System.lineSeparator()));
 			String projectname = new File(full_path).getName();
 			for (String cla : comments.keySet()) {
-
-				String pack = cla.substring(0, cla.lastIndexOf("."));
+				String pack = cla.contains(".") ? cla.substring(0, cla.lastIndexOf(".")) : cla;
 				String top = getTop(top_levels, pack);
-
+	
 				List<CommentInfo> comms = comments.get(cla);
 				for (CommentInfo ci : comms) {
 					csvPrinter.printRecord(projectname, pack, top, ci.getComment(), ci.getFileName(), ci.getMethodName(), ci.getBeginLineNumber(), ci.getEndLineNumber());
 					String c = DataHandler.cleanComment(ci.getComment());
-
+	
 					if (c.contentEquals(" ")) continue;
-
+	
 					Instance inst = new DenseInstance(data.numAttributes());
 					inst.setDataset(data);
 					inst.setValue(0, projectname);
@@ -225,36 +219,35 @@ public class JavaParsing {
 					data.add(inst);
 				}
 			}
-
+	
 			csvPrinter.flush();
 			csvPrinter.close();
-
+	
 			return data;
-
+	
 		} else {
 			FileWriter csv = new FileWriter(outputPath + "/comments.csv", true);
 			BufferedWriter writer = new BufferedWriter(csv);
-
+	
 			Set<String> top_levels = getTopLevelPackages(packages);
-
+	
 			CSVPrinter csvPrinter = new CSVPrinter(writer, CSVFormat.DEFAULT.withQuoteMode(QuoteMode.ALL)
 					.withEscape('\\')
 					.withRecordSeparator(System.lineSeparator()));
-
+	
 			String projectname = new File(full_path).getName();
 			for (String cla : comments.keySet()) {
-
-				String pack = cla.substring(0, cla.lastIndexOf("."));
+				String pack = cla.contains(".") ? cla.substring(0, cla.lastIndexOf(".")) : cla;
 				String top = getTop(top_levels, pack);
-
+	
 				List<CommentInfo> comms = comments.get(cla);
 				for (CommentInfo ci : comms) {
 					csvPrinter.printRecord(projectname, pack, top, ci.getComment(), ci.getFileName(), ci.getMethodName(), ci.getBeginLineNumber(), ci.getEndLineNumber());
-
+	
 					String c = DataHandler.cleanComment(ci.getComment());
-
+	
 					if (c.contentEquals(" ")) continue;
-
+	
 					Instance inst = new DenseInstance(data.numAttributes());
 					inst.setDataset(data);
 					inst.setValue(0, projectname);
@@ -268,10 +261,10 @@ public class JavaParsing {
 					data.add(inst);
 				}
 			}
-
+	
 			csvPrinter.flush();
 			csvPrinter.close();
-
+	
 			writer.close();
 			return data;
 		}

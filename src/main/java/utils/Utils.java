@@ -9,23 +9,23 @@ import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
 
 public class Utils {
 
-	public static String getQualifiedName(CompilationUnit cu, ClassOrInterfaceDeclaration ci, String package_declaration) {
+	// public static String getQualifiedName(CompilationUnit cu, ClassOrInterfaceDeclaration ci, String package_declaration) {
 
-		StringBuilder sb = new StringBuilder();
-		sb.append(package_declaration+".");
-		if(!ci.isNestedType())
-			return sb.toString()+ci.getNameAsString();
+	// 	StringBuilder sb = new StringBuilder();
+	// 	sb.append(package_declaration+".");
+	// 	if(!ci.isNestedType())
+	// 		return sb.toString()+ci.getNameAsString();
 
-		Optional<ClassOrInterfaceDeclaration> ancestor = ci.getAncestorOfType(ClassOrInterfaceDeclaration.class);
-		while(ancestor.isPresent()){
-			sb.append(ancestor.get().getNameAsString()+"#");
-			ancestor = ancestor.get().getAncestorOfType(ClassOrInterfaceDeclaration.class);
-		}
+	// 	Optional<ClassOrInterfaceDeclaration> ancestor = ci.getAncestorOfType(ClassOrInterfaceDeclaration.class);
+	// 	while(ancestor.isPresent()){
+	// 		sb.append(ancestor.get().getNameAsString()+"#");
+	// 		ancestor = ancestor.get().getAncestorOfType(ClassOrInterfaceDeclaration.class);
+	// 	}
 
-		sb.append(ci.getNameAsString());
+	// 	sb.append(ci.getNameAsString());
 
-		return sb.toString();
-	}
+	// 	return sb.toString();
+	// }
 
 	public static class MethodCallVisitor extends VoidVisitorAdapter<Void> {
 
