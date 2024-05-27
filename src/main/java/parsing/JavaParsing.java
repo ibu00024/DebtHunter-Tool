@@ -44,7 +44,7 @@ public class JavaParsing {
 	private static Map<String, List<CommentInfo>> parseClass(InputStream filePath, String fileName) throws IOException {
 		CompilationUnit cu = null;
 		Map<String, List<CommentInfo>> elements = new HashMap<>();
-		
+	
 		try {
 			ParserConfiguration configuration = new ParserConfiguration();
 			configuration.setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_17);
@@ -97,10 +97,17 @@ public class JavaParsing {
 			methodRanges.add(new MethodRange(beginLine, endLine, methodName));
 		}
 	
-		// TODO: コメントが所属するメソッドのアルゴリズムは変更する
+		/*
+		 * Identify the method to which the comment belongs
+		 */
 		public String getMethodNameForLine(int lineNumber) {
 			for (MethodRange range : methodRanges) {
 				if (lineNumber >= range.getBeginLine() && lineNumber <= range.getEndLine()) {
+					return range.getMethodName();
+				}
+			}
+			for (MethodRange range : methodRanges) {
+				if (lineNumber < range.getBeginLine()) {
 					return range.getMethodName();
 				}
 			}
