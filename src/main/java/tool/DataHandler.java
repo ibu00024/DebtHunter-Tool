@@ -88,6 +88,14 @@ public class DataHandler {
         return value;
     }
 
+    // エスケープシーケンスを削除するメソッド
+    public static String unescapeString(String value) {
+        if (value != null) {
+            value = value.replace("\\'", "'").replace("\\\"", "\"").replace("\\\\", "\\");
+        }
+        return value;
+    }
+
     // Required full path
     public static void saveData(Instances data, String dataName, String path) throws IOException {
         // Save as ARFF
@@ -106,6 +114,7 @@ public class DataHandler {
                 String attributeName = data.attribute(j).name();
                 String value = data.instance(i).toString(j);
                 value = removeSingleQuotes(value);
+                value = unescapeString(value);
                 instanceNode.put(attributeName, value);
             }
             rootNode.add(instanceNode);
