@@ -4,7 +4,7 @@
   <groupId>DebtHunter</groupId>
   <artifactId>DebtHunter</artifactId>
   <name>DebtHunter</name>
-  <version>allCode</version>
+  <version>testCode</version>
   <url>http://maven.apache.org</url>
   <build>
     <sourceDirectory>src</sourceDirectory>

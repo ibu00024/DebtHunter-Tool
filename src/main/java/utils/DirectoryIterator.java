@@ -28,9 +28,9 @@ public class DirectoryIterator implements FileIterator {
 			if(f.isDirectory())
 				files.addAll(listDirectory(f.getAbsolutePath()));
 			else{
-				if (f.getName().endsWith(".java")) {
-					// include all java files
-					files.add(f);	
+				if (f.getName().endsWith(".java") && (f.getAbsolutePath().contains(File.separator + "test" + File.separator) || f.getAbsolutePath().contains(File.separator + "tests" + File.separator))) {
+					// include only test code
+					files.add(f);
 				}
 
 			}
