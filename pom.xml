@@ -5,7 +5,7 @@
   
 	<groupId>DebtHunter</groupId>
 	<artifactId>DebtHunter</artifactId>
-	<version>allCode</version>
+	<version>productionCode</version>
 	<packaging>jar</packaging>
   
 	<name>DebtHunter</name>
