@@ -180,7 +180,8 @@ public class JavaParsing {
 		Set<String> packages = new HashSet<>();
 		InputStream clas = it.nextStream();
 		while (clas != null) {
-			String fileName = ((DirectoryIterator) it).getCurrentFileName();
+			// String fileName = ((DirectoryIterator) it).getCurrentFileName();
+			String fileName = ((DirectoryIterator) it).getCurrentFilePath().replace(path, "");;
 	
 			Map<String, List<CommentInfo>> aux = parseClass(clas, fileName);
 			if (aux.size() > 0) {

@@ -72,4 +72,11 @@ public class DirectoryIterator implements FileIterator {
         }
         return null;
     }
+
+	public String getCurrentFilePath() {
+		if (index - 1 < files.size()) {
+			return files.get(index - 1).getAbsolutePath();
+		}
+		return null;
+	}
 }
