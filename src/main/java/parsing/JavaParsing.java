@@ -140,7 +140,7 @@ public class JavaParsing {
 	}
 	
 
-    public static Instances processDirectory(String projectPath, String outputPath) throws Exception {
+    public static Instances processDirectory(String projectPath, String outputPath, List<String> searchStrings, boolean shouldContain) throws Exception {
         Boolean firstTime = true;
 
         ArrayList<Attribute> attributes = new ArrayList<>();
@@ -164,17 +164,17 @@ public class JavaParsing {
 
 			if (full_path == null) continue;
 
-			data = saveComments(full_path, projectPath, outputPath, firstTime, data);
+			data = saveComments(full_path, projectPath, outputPath, firstTime, data, searchStrings, shouldContain);
             firstTime = false;
 		}
 
         return data;
     }
 	
-	private static Instances saveComments(String full_path, String path, String outputPath, Boolean firstTime, Instances data) throws Exception {
+	private static Instances saveComments(String full_path, String path, String outputPath, Boolean firstTime, Instances data, List<String> searchStrings, boolean shouldContain) throws Exception {
 		System.out.println("Getting comments... " + full_path + " " + new Date());
 	
-		FileIterator it = FileIterator.getIterator(full_path);
+		FileIterator it = FileIterator.getIterator(full_path, searchStrings, shouldContain);
 	
 		Map<String, List<CommentInfo>> comments = new HashMap<>();
 		Set<String> packages = new HashSet<>();
@@ -396,15 +396,6 @@ public class JavaParsing {
 
 		}
 		return packages;
-	}
-	
-	public static void main(String[] args) throws Exception {
-		
-		String path = args[0];
-		String outputPath = args[1];
-		Instances data = processDirectory(path, outputPath);
-		System.out.println(data);
-
 	}
 
 }

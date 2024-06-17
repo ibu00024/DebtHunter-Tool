@@ -2,10 +2,11 @@ package utils;
 
 import java.io.File;
 import java.io.InputStream;
+import java.util.List;
 
 public interface FileIterator {
 
-	public static FileIterator getIterator(String path){
+	public static FileIterator getIterator(String path, List<String> searchStrings, boolean shouldContain){
 		
 		File f = new File(path);
 		
@@ -22,7 +23,7 @@ public interface FileIterator {
 			return new TarIterator(path+".tar.gz");
 		
 		if(f.isDirectory())
-			return new DirectoryIterator(path);
+			return new DirectoryIterator(path, searchStrings, shouldContain);
 		
 		return null;
 	}

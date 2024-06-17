@@ -2,6 +2,9 @@ package tool;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 
 import org.apache.commons.lang.StringUtils;
 
@@ -49,6 +52,13 @@ public class DebtHunterTool implements Runnable {
     @Option(names = {"-o", "--output"}, description = "The path where the DebtHunt outputs are saved.")
     private String outputPath = "";
 
+	@Option(names = {"-s", "--search"}, description = "Search strings for filtering files.")
+    private String searchString = "";
+
+	@Option(names = {"-opt", "--contain"}, description = "Specify whether the search strings should be contained in the file paths. Default is true.")
+	private boolean shouldContain = true;
+
+
 	@Override
 	public void run() {
 		
@@ -70,11 +80,18 @@ public class DebtHunterTool implements Runnable {
 			
 			System.out.println("You selected the first use case!");
 			Instances test = null;
+
+			List<String> searchStrings;
+            if (StringUtils.isNotEmpty(searchString)) {
+                searchStrings = Arrays.asList(searchString.split(","));
+            } else {
+                searchStrings = Collections.emptyList();
+            }
 			
 			// if the input data is java files
 			if (StringUtils.isNotEmpty(projectPath)) {
 				try {
-					test = JavaParsing.processDirectory(projectPath, outputPath);
+					test = JavaParsing.processDirectory(projectPath, outputPath, searchStrings, shouldContain);
 				} catch (Exception e) {
 					e.printStackTrace();
 				}
@@ -191,11 +208,8 @@ public class DebtHunterTool implements Runnable {
 	}
 	
 	public static void main(String[] args) throws Exception {
-		
 		int exitCode = new CommandLine(new DebtHunterTool()).execute(args);
-        System.exit(exitCode);
-			
-		
+        System.exit(exitCode);	
 	}
 
 }
